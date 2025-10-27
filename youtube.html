@@ -1,0 +1,533 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>脱法YouTube — 完全版</title>
+<style>
+:root{
+  --bg:#ffffff; --text:#111;
+  --sidebar:#f8f9fb; --border:#e6e9ee;
+  --card:#ffffff; --hover:#f2f5fa; --accent:#ff3b30;
+  --muted:#6b6b6b;
+}
+body.dark{
+  --bg:#0b0c0d; --text:#e6e6e6;
+  --sidebar:#0f1113; --border:#222426;
+  --card:#121214; --hover:#1a1c1e; --accent:#ff5b5b;
+  --muted:#9a9a9a;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;background:var(--bg);color:var(--text);}
+
+/* layout */
+.app{display:flex;height:100vh;transition:all .18s ease}
+.sidebar{width:360px;min-width:260px;max-width:460px;background:var(--sidebar);border-right:1px solid var(--border);padding:14px;display:flex;flex-direction:column;gap:10px;overflow:auto}
+.main{flex:1;display:flex;flex-direction:column;gap:12px;padding:16px;overflow:auto;background:var(--bg)}
+
+/* header / search */
+.header-row{display:flex;gap:8px;align-items:center}
+.toggle-theme{width:44px;height:44px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:var(--card);border:1px solid var(--border);cursor:pointer}
+#searchInput{flex:1;padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text)}
+#searchBtn{padding:10px 12px;border-radius:10px;background:var(--accent);color:#fff;border:none;font-weight:700;cursor:pointer}
+
+/* history */
+.history-box{display:flex;flex-direction:column;gap:6px;margin-top:6px}
+.history-item{display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:var(--card);border:1px solid var(--border);border-radius:8px;cursor:pointer}
+.history-item button{background:none;border:none;color:#c62828;font-weight:700;cursor:pointer}
+
+/* results */
+.results-list{flex:1;display:flex;flex-direction:column;gap:12px;overflow:auto;padding-bottom:40px}
+.result-item{display:flex;gap:12px;padding:12px;border-radius:12px;background:var(--card);border:1px solid var(--border);cursor:pointer;align-items:flex-start;position:relative;transition:transform .12s,box-shadow .12s}
+.result-item:hover{transform:translateY(-4px);box-shadow:0 12px 30px rgba(0,0,0,0.08)}
+.result-thumb{position:relative;width:168px;flex:0 0 168px}
+.result-thumb img{width:168px;height:94px;object-fit:cover;border-radius:8px;display:block;background:linear-gradient(90deg,#eee,#ddd)}
+.add-queue-btn{position:absolute;right:6px;bottom:6px;background:var(--accent);color:#fff;border:none;border-radius:6px;padding:6px 8px;cursor:pointer;box-shadow:0 8px 18px rgba(0,0,0,0.15);transition:transform .15s}
+.add-queue-btn:hover{transform:scale(1.3)}
+.result-info{flex:1;min-width:0}
+.result-title{font-weight:700;font-size:14px;line-height:1.3;margin-bottom:6px}
+.result-channel{font-size:13px;color:#2b6db3;text-decoration:underline;cursor:pointer}
+.result-meta{font-size:12px;color:var(--muted)}
+
+/* player */
+.video-container{position:relative;padding-top:56.25%;background:#000;border-radius:12px;overflow:hidden}
+#ytplayer,.video-iframe{position:absolute;top:0;left:0;width:100%;height:100%;border:0;z-index:5}
+.video-info{padding:8px 6px;background:var(--bg);border-radius:8px}
+.video-title{font-weight:800;font-size:18px;margin-bottom:6px}
+.video-channel-m{font-size:14px;color:var(--muted);margin-bottom:6px}
+.video-description{font-size:14px;color:var(--text);white-space:pre-wrap;line-height:1.5}
+
+/* related */
+.related-videos{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}
+.related-videos .result-item{width:calc(50% - 8px);flex-direction:column;padding:8px}
+.related-videos .result-thumb{width:100%;flex:0 0 auto}
+.related-videos .result-thumb img{width:100%;height:90px;border-radius:6px}
+
+/* queue popup (floating) */
+.queue-popup{position:fixed;right:20px;bottom:20px;width:340px;max-height:46vh;z-index:1500;border-radius:14px;overflow:hidden;box-shadow:0 18px 40px rgba(0,0,0,0.24);background:var(--card);border:1px solid var(--border);display:flex;flex-direction:column;transition:transform .28s,opacity .2s}
+.queue-popup.collapsed{transform:translateY(calc(100% - 56px));opacity:.96}
+.queue-header{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:var(--sidebar);border-bottom:1px solid var(--border);cursor:pointer}
+.queue-list{overflow:auto;display:flex;flex-direction:column;max-height:340px}
+.queue-item{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-bottom:1px solid var(--border);cursor:default}
+.queue-item .queue-handle{margin-right:10px;opacity:.8;cursor:grab;padding:6px 8px;border-radius:6px;background:rgba(0,0,0,0.04)}
+.queue-item.dragging{opacity:.6}
+.queue-item:hover{background:var(--hover)}
+.queue-item button{background:none;border:none;color:#c62828;font-weight:700;cursor:pointer}
+
+/* notice + loading */
+.queue-notice{position:fixed;right:20px;top:20px;background:var(--accent);color:#fff;padding:8px 12px;border-radius:8px;opacity:0;transform:translateY(-8px);transition:all .25s;z-index:9999}
+.queue-notice.show{opacity:1;transform:translateY(0)}
+.loading-overlay{position:fixed;right:20px;bottom:20px;background:rgba(0,0,0,0.6);color:white;padding:10px 12px;border-radius:10px;display:none;align-items:center;gap:8px;z-index:2000}
+.spinner{width:16px;height:16px;border-radius:50%;border:3px solid rgba(255,255,255,0.2);border-top-color:white;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* responsive */
+@media (max-width:920px){
+  .app{flex-direction:column;height:auto}
+  .sidebar{width:100%;border-right:none;border-bottom:1px solid var(--border);max-height:40vh;overflow:auto}
+  .main{width:100%;padding:12px 10px}
+  .queue-popup{right:0;bottom:0;width:100%;max-height:50vh;border-radius:12px 12px 0 0}
+  .result-thumb{width:120px;flex:0 0 120px}
+  .result-thumb img{width:120px;height:68px}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="header-row">
+      <div class="toggle-theme" id="toggleTheme" title="ダーク/ライト切替">🌙</div>
+      <input id="searchInput" placeholder="動画を検索 (YouTube Data API)"/>
+      <button id="searchBtn">検索</button>
+    </div>
+
+    <div class="history-box" id="historyBox" aria-label="検索履歴"></div>
+
+    <div class="results-list" id="results" aria-live="polite"></div>
+  </aside>
+
+  <main class="main">
+    <div class="video-container" id="player">
+      <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;background:linear-gradient(180deg,#000,#111);">
+        動画を選択してください
+      </div>
+    </div>
+
+    <div class="video-info" id="videoInfo"></div>
+    <div class="related-videos" id="relatedVideos"></div>
+  </main>
+</div>
+
+<div class="queue-popup collapsed" id="queuePopup" style="display:none">
+  <div class="queue-header" id="queueHeader">
+    <div style="display:flex;align-items:center;gap:8px"><strong id="queueTitle">▶ キュー</strong><small id="queueCount" style="opacity:.7"></small></div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button id="clearQueueBtn" title="クリア" style="background:none;border:none;cursor:pointer;color:#c62828;font-weight:700">クリア</button>
+      <button id="shuffleBtn" title="シャッフル" style="background:none;border:none;cursor:pointer">🔀</button>
+      <button id="repeatBtn" title="リピート" style="background:none;border:none;cursor:pointer">🔁</button>
+    </div>
+  </div>
+  <div class="queue-list" id="queueList"></div>
+</div>
+
+<div id="queueNotice" class="queue-notice">キューに追加しました</div>
+<div id="loading" class="loading-overlay"><div class="spinner"></div><div id="loadingText">読み込み中…</div></div>
+
+<script>
+/* ================= CONFIG: API KEYS ================= */
+const API_KEYS = [
+  "AIzaSyAsNToibXb37DIGsW03M2wfCqliQ49Lhm0",
+  "AIzaSyAsfvwnZ50xEQ8VvvcG59BR5EIfpFjC4bs",
+  "AIzaSyDrZwGkrVtsp61zDUKj6WS-UWh3shUvRNg",
+  "AIzaSyAe0JSOE67-VLVzg-7BCMgJUM8SA1rmcSc",
+  "AIzaSyDUOAn-nKORPpnKXt4Q12tMCMPbGGP7q48",
+  "AIzaSyBJYGuChAwPaPTbfryHJ7F2p1eTVTXsREA",
+  "AIzaSyCiOUkDyYmeRGJm5ZY2HSz9z2svN4j0gHg",
+  "AIzaSyD1Qw8NPVWgE2RK9XKkGxXGneP12plw1Tk"
+];
+let apiIndex = 0;
+
+/* ================= Refs & State ================= */
+const searchInput = document.getElementById('searchInput');
+const searchBtn = document.getElementById('searchBtn');
+const resultsDiv = document.getElementById('results');
+const historyBox = document.getElementById('historyBox');
+const playerDiv = document.getElementById('player');
+const videoInfoDiv = document.getElementById('videoInfo');
+const relatedVideosDiv = document.getElementById('relatedVideos');
+const queuePopup = document.getElementById('queuePopup');
+const queueList = document.getElementById('queueList');
+const queueHeader = document.getElementById('queueHeader');
+const queueCount = document.getElementById('queueCount');
+const clearQueueBtn = document.getElementById('clearQueueBtn');
+const shuffleBtn = document.getElementById('shuffleBtn');
+const repeatBtn = document.getElementById('repeatBtn');
+const queueNotice = document.getElementById('queueNotice');
+const loadingEl = document.getElementById('loading');
+
+let nextPageToken = null;
+let currentQuery = '';
+let loading = false;
+let displayedIds = new Set();
+let searchHistory = JSON.parse(localStorage.getItem('yt_search_history') || '[]');
+let queue = JSON.parse(localStorage.getItem('yt_queue') || '[]');
+let currentPlayingId = null;
+let ytPlayer = null;
+let ytApiReady = false;
+let shuffleMode = false;
+let repeatMode = false;
+
+/* ================ THEME ================ */
+(function initTheme(){
+  const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const hour = new Date().getHours();
+  if(prefersDark || hour >= 19 || hour < 6) document.body.classList.add('dark');
+})();
+document.getElementById('toggleTheme').addEventListener('click', ()=> document.body.classList.toggle('dark'));
+
+/* ================ HISTORY ================ */
+function renderHistory(){
+  historyBox.innerHTML = '';
+  if(searchHistory.length === 0){
+    const p = document.createElement('div'); p.style.opacity='.7'; p.style.fontSize='13px';
+    p.textContent = '検索履歴はここに表示されます';
+    historyBox.appendChild(p); return;
+  }
+  searchHistory.slice().reverse().forEach((term, idx) => {
+    const row = document.createElement('div'); row.className = 'history-item';
+    row.textContent = term;
+    const btn = document.createElement('button'); btn.textContent = '×';
+    btn.onclick = (e)=>{ e.stopPropagation(); searchHistory.splice(searchHistory.length-1-idx,1); saveHistory(); renderHistory(); };
+    row.appendChild(btn);
+    row.addEventListener('click', ()=> { searchInput.value = term; startSearch(); });
+    historyBox.appendChild(row);
+  });
+}
+function saveHistory(){ localStorage.setItem('yt_search_history', JSON.stringify(searchHistory.slice(-80))); }
+renderHistory();
+
+/* ================ QUEUE ================ */
+function saveQueue(){ localStorage.setItem('yt_queue', JSON.stringify(queue)); updateQueueUI(); }
+function loadQueue(){ queue = JSON.parse(localStorage.getItem('yt_queue') || '[]'); updateQueueUI(); }
+function updateQueueUI(){
+  if(!queue || queue.length === 0){ queuePopup.style.display = 'none'; queueCount.textContent=''; return; }
+  queuePopup.style.display = 'flex';
+  renderQueue();
+}
+function renderQueue(){
+  queueList.innerHTML = '';
+  queue.forEach((item, idx) => {
+    const el = document.createElement('div'); el.className='queue-item';
+    // handle only draggable area
+    const handle = document.createElement('span'); handle.className='queue-handle'; handle.textContent='≡'; handle.draggable = true;
+    handle.addEventListener('dragstart', (ev)=>{ ev.dataTransfer.setData('text/plain', idx.toString()); el.classList.add('dragging'); });
+    handle.addEventListener('dragend', ()=> el.classList.remove('dragging'));
+    // clicking other parts plays
+    const title = document.createElement('span'); title.textContent = item.title || '(無題)'; title.style.flex='1'; title.style.paddingLeft='8px';
+    title.addEventListener('click', ()=> { loadVideo(item.id); });
+    const del = document.createElement('button'); del.textContent = '×';
+    del.addEventListener('click', (e)=>{ e.stopPropagation(); queue.splice(idx,1); saveQueue(); });
+    // drop targets on the element
+    el.addEventListener('dragover', (ev)=>{ ev.preventDefault(); el.style.transform='translateY(4px)'; });
+    el.addEventListener('dragleave', ()=> el.style.transform = '' );
+    el.addEventListener('drop', (ev)=>{ ev.preventDefault(); el.style.transform = ''; const from = Number(ev.dataTransfer.getData('text/plain')); const to = idx; if(isNaN(from)) return; const it = queue.splice(from,1)[0]; queue.splice(to,0,it); saveQueue(); renderQueue(); });
+    el.appendChild(handle); el.appendChild(title); el.appendChild(del);
+    queueList.appendChild(el);
+  });
+  queueCount.textContent = queue.length ? `${queue.length}` : '';
+}
+
+queueHeader.addEventListener('click', ()=> queuePopup.classList.toggle('collapsed'));
+clearQueueBtn.addEventListener('click', ()=> { queue = []; saveQueue(); });
+shuffleBtn.addEventListener('click', ()=> { shuffleMode = !shuffleMode; shuffleBtn.style.opacity = shuffleMode ? '1' : '0.6'; });
+repeatBtn.addEventListener('click', ()=> { repeatMode = !repeatMode; repeatBtn.style.opacity = repeatMode ? '1' : '0.6'; });
+
+function addToQueue(id, title){
+  if(!id) return;
+  if(queue.some(q=>q.id===id)){ showNotice('既にキューにあります'); return; }
+  queue.push({id, title});
+  saveQueue();
+  showNotice('キューに追加しました');
+  if(!currentPlayingId) playIndexInQueue(0);
+}
+function showNotice(msg='キューに追加しました'){
+  queueNotice.textContent = msg;
+  queueNotice.classList.add('show');
+  setTimeout(()=> queueNotice.classList.remove('show'), 1200);
+}
+
+/* ================ Lazy thumbnails ================ */
+const thumbObserver = new IntersectionObserver((entries, obs) => {
+  entries.forEach(en=>{
+    if(!en.isIntersecting) return;
+    const img = en.target;
+    const src = img.dataset.src;
+    if(src){ img.src = src; img.removeAttribute('data-src'); }
+    obs.unobserve(img);
+  });
+}, { root: resultsDiv, rootMargin: '300px' });
+
+/* ================ Infinite scroll ================ */
+let scrollDebounce = 0;
+resultsDiv.addEventListener('scroll', ()=>{
+  if(loading) return;
+  if(resultsDiv.scrollTop + resultsDiv.clientHeight >= resultsDiv.scrollHeight - 140){
+    if(Date.now() - scrollDebounce < 300) return;
+    scrollDebounce = Date.now();
+    if(nextPageToken) fetchVideos();
+  }
+});
+
+/* ================ API key helpers ================ */
+function currentKey(){ return API_KEYS[apiIndex % API_KEYS.length]; }
+function rotateKey(){ apiIndex = (apiIndex + 1) % API_KEYS.length; }
+
+/* ================ Search & fetch ================ */
+async function startSearch(){
+  const q = (searchInput.value || '').trim();
+  if(!q) return;
+  currentQuery = q;
+  nextPageToken = null;
+  displayedIds.clear();
+  resultsDiv.innerHTML = '';
+  if(!searchHistory.includes(q)){ searchHistory.push(q); if(searchHistory.length>80) searchHistory.shift(); saveHistory(); renderHistory(); }
+  await fetchVideos();
+}
+searchBtn.addEventListener('click', startSearch);
+searchInput.addEventListener('keydown', (e)=>{ if(e.key === 'Enter') startSearch(); });
+
+async function fetchVideos(){
+  if(loading) return;
+  if(!currentQuery) return;
+  loading = true; loadingEl.style.display = 'flex';
+  let tried = 0;
+  while(tried < API_KEYS.length){
+    const key = currentKey();
+    const pageParam = nextPageToken ? `&pageToken=${encodeURIComponent(nextPageToken)}` : '';
+    const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=12&q=${encodeURIComponent(currentQuery)}${pageParam}&key=${key}`;
+    try{
+      const res = await fetch(url);
+      if(!res.ok){ console.warn('search fetch http', res.status, '— rotating key'); rotateKey(); tried++; continue; }
+      const data = await res.json();
+      if(data.error){ console.warn('search api error', data.error); rotateKey(); tried++; continue; }
+      nextPageToken = data.nextPageToken || null;
+      appendResults(data.items || []);
+      break;
+    }catch(err){ console.error('fetchVideos error', err); rotateKey(); tried++; }
+  }
+  loading = false; loadingEl.style.display = 'none';
+}
+
+function appendResults(items){
+  items.forEach(item=>{
+    const vid = item.id && item.id.videoId ? item.id.videoId : null;
+    if(!vid) return;
+    if(displayedIds.has(vid)) return;
+    displayedIds.add(vid);
+
+    const el = document.createElement('div'); el.className = 'result-item';
+    const thumbDiv = document.createElement('div'); thumbDiv.className = 'result-thumb';
+    const img = document.createElement('img'); img.alt = 'thumb';
+    img.dataset.src = (item.snippet.thumbnails && (item.snippet.thumbnails.medium || item.snippet.thumbnails.default)) ?
+                    (item.snippet.thumbnails.medium || item.snippet.thumbnails.default).url : '';
+    thumbDiv.appendChild(img);
+    const btn = document.createElement('button'); btn.className = 'add-queue-btn'; btn.title = 'キューに追加'; btn.textContent = '＋';
+    btn.addEventListener('click', (e)=>{ e.stopPropagation(); addToQueue(vid, item.snippet.title || '(無題)'); });
+    thumbDiv.appendChild(btn);
+    el.appendChild(thumbDiv);
+
+    const infoDiv = document.createElement('div'); infoDiv.className = 'result-info';
+    const titleDiv = document.createElement('div'); titleDiv.className = 'result-title'; titleDiv.textContent = item.snippet.title || '(無題)';
+    titleDiv.addEventListener('click', ()=> loadVideoAndEnsurePlayed(vid));
+    const channelDiv = document.createElement('div'); channelDiv.className = 'result-channel'; channelDiv.textContent = item.snippet.channelTitle || '';
+    channelDiv.addEventListener('click', (e)=> { e.stopPropagation(); // show channel videos
+      nextPageToken = null; currentQuery = ''; resultsDiv.innerHTML = ''; displayedIds.clear(); fetchVideosByChannel(item.snippet.channelId);
+    });
+    infoDiv.appendChild(titleDiv); infoDiv.appendChild(channelDiv);
+    el.appendChild(infoDiv);
+
+    resultsDiv.appendChild(el);
+    if(img) thumbObserver.observe(img);
+  });
+}
+
+/* fetch channel videos */
+async function fetchVideosByChannel(channelId){
+  if(!channelId) return;
+  loading = true; loadingEl.style.display = 'flex';
+  let tried = 0;
+  while(tried < API_KEYS.length){
+    const key = currentKey();
+    const pageParam = nextPageToken ? `&pageToken=${encodeURIComponent(nextPageToken)}` : '';
+    const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${encodeURIComponent(channelId)}&type=video&maxResults=12${pageParam}&key=${key}`;
+    try{
+      const res = await fetch(url);
+      if(!res.ok){ rotateKey(); tried++; continue; }
+      const data = await res.json();
+      if(data.error){ rotateKey(); tried++; continue; }
+      nextPageToken = data.nextPageToken || null;
+      appendResults(data.items || []);
+      break;
+    }catch(err){ console.error('fetchVideosByChannel err', err); rotateKey(); tried++; }
+  }
+  loading = false; loadingEl.style.display = 'none';
+}
+
+/* ================ YT Player integration ================ */
+(function loadYouTubeIframeAPI(){
+  if(window.YT && window.YT.Player){ ytApiReady = true; return; }
+  const tag = document.createElement('script');
+  tag.src = "https://www.youtube.com/iframe_api";
+  document.body.appendChild(tag);
+})();
+window.onYouTubeIframeAPIReady = function(){
+  ytApiReady = true;
+  // create player container only when needed
+};
+
+/* load/play video — do NOT force mute */
+function ensurePlayerContainer(){
+  let holder = document.getElementById('ytplayer');
+  if(!holder){
+    playerDiv.innerHTML = '<div id="ytplayer"></div>';
+    holder = document.getElementById('ytplayer');
+  }
+  return holder;
+}
+
+async function loadVideoAndEnsurePlayed(videoId){
+  if(!videoId) return;
+  currentPlayingId = videoId;
+  const holder = ensurePlayerContainer();
+  // prefer YT.Player if available (gives events)
+  if(ytApiReady){
+    if(!ytPlayer){
+      ytPlayer = new YT.Player('ytplayer', {
+        height: '100%',
+        width: '100%',
+        videoId: videoId,
+        playerVars: { autoplay: 1, rel: 0, playsinline: 1 },
+        events: { onStateChange: onPlayerStateChange, onError: onPlayerError }
+      });
+    }else{
+      try{ ytPlayer.loadVideoById(videoId); }catch(e){
+        // fallback iframe
+        playerDiv.innerHTML = `<iframe class="video-iframe" src="https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0&playsinline=1" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>`;
+        ytPlayer = null;
+      }
+    }
+  }else{
+    // API not ready — fallback to iframe (no muted param)
+    playerDiv.innerHTML = `<iframe class="video-iframe" src="https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0&playsinline=1" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>`;
+  }
+  // fetch metadata & related
+  fetchVideoInfo(videoId);
+  fetchRelatedVideos(videoId);
+  renderQueue(); // update UI highlight if desired
+}
+
+/* on ended -> next */
+function onPlayerStateChange(e){
+  if(typeof YT === 'undefined') return;
+  if(e.data === YT.PlayerState.ENDED){
+    // find current index in queue
+    if(!queue || queue.length === 0) return;
+    let idx = queue.findIndex(q => q.id === currentPlayingId);
+    if(idx === -1){
+      playIndexInQueue(0); return;
+    }
+    let nextIdx = idx + 1;
+    if(nextIdx >= queue.length){
+      if(repeatMode) nextIdx = 0;
+      else return;
+    }
+    if(shuffleMode) nextIdx = Math.floor(Math.random() * queue.length);
+    playIndexInQueue(nextIdx);
+  }
+}
+function onPlayerError(e){
+  console.error('YT Player error', e);
+  if(currentPlayingId){
+    playerDiv.innerHTML = `<iframe class="video-iframe" src="https://www.youtube.com/embed/${currentPlayingId}?autoplay=1&rel=0&playsinline=1" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>`;
+    ytPlayer = null;
+  }
+}
+function playIndexInQueue(idx){
+  if(idx < 0 || idx >= queue.length) return;
+  loadVideoAndEnsurePlayed(queue[idx].id);
+}
+
+/* ================ Video metadata & related ==================== */
+async function fetchVideoInfo(videoId){
+  let tried = 0;
+  while(tried < API_KEYS.length){
+    const key = currentKey();
+    try{
+      const res = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id=${encodeURIComponent(videoId)}&key=${key}`);
+      if(!res.ok){ rotateKey(); tried++; continue; }
+      const data = await res.json();
+      if(data.error){ rotateKey(); tried++; continue; }
+      const v = data.items && data.items[0];
+      if(!v){ videoInfoDiv.innerHTML = '<div style="color:var(--muted)">情報を取得できません</div>'; return; }
+      const s = v.statistics || {};
+      const desc = v.snippet.description || '';
+      videoInfoDiv.innerHTML = `
+        <div class="video-title">${escapeHtml(v.snippet.title)}</div>
+        <div class="video-channel-m">${escapeHtml(v.snippet.channelTitle||'')}</div>
+        <div class="video-stats">再生: ${Number(s.viewCount||0).toLocaleString()}　👍 ${Number(s.likeCount||0).toLocaleString()}</div>
+        <div class="video-description">${escapeHtml(desc)}</div>
+      `;
+      return;
+    }catch(err){ console.error('fetchVideoInfo err', err); rotateKey(); tried++; }
+  }
+  videoInfoDiv.innerHTML = '<div style="color:var(--muted)">情報を取得できません（キー不足）</div>';
+}
+
+async function fetchRelatedVideos(videoId){
+  relatedVideosDiv.innerHTML = '<div style="color:var(--muted)">関連動画を取得中…</div>';
+  let tried = 0;
+  while(tried < API_KEYS.length){
+    const key = currentKey();
+    try{
+      const res = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&relatedToVideoId=${encodeURIComponent(videoId)}&maxResults=8&key=${key}`);
+      if(!res.ok){ rotateKey(); tried++; continue; }
+      const data = await res.json();
+      if(data.error){ rotateKey(); tried++; continue; }
+      relatedVideosDiv.innerHTML = '';
+      (data.items || []).forEach(item=>{
+        const vid2 = item.id && item.id.videoId ? item.id.videoId : null;
+        if(!vid2) return;
+        const el = document.createElement('div'); el.className='result-item';
+        el.style.width = 'calc(50% - 8px)';
+        const thumbDiv = document.createElement('div'); thumbDiv.className='result-thumb';
+        const img = document.createElement('img'); img.src = (item.snippet.thumbnails && (item.snippet.thumbnails.medium || item.snippet.thumbnails.default)) ? (item.snippet.thumbnails.medium || item.snippet.thumbnails.default).url : '';
+        thumbDiv.appendChild(img);
+        el.appendChild(thumbDiv);
+        const info = document.createElement('div'); info.className='result-info';
+        const t = document.createElement('div'); t.className='result-title'; t.textContent = item.snippet.title || '(無題)';
+        t.addEventListener('click', ()=> loadVideoAndEnsurePlayed(vid2));
+        info.appendChild(t);
+        el.appendChild(info);
+        relatedVideosDiv.appendChild(el);
+      });
+      return;
+    }catch(err){ console.error('fetchRelatedVideos err', err); rotateKey(); tried++; }
+  }
+  relatedVideosDiv.innerHTML = '';
+}
+
+/* ================ Helpers & storage ================ */
+function escapeHtml(s){ return s ? String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])) : ''; }
+function saveHistory(){ localStorage.setItem('yt_search_history', JSON.stringify(searchHistory.slice(-80))); }
+function saveQueue(){ localStorage.setItem('yt_queue', JSON.stringify(queue)); updateQueueUI(); }
+function loadQueue(){ queue = JSON.parse(localStorage.getItem('yt_queue') || '[]'); updateQueueUI(); }
+function loadAll(){ renderHistory(); loadQueue(); renderQueue(); }
+window.addEventListener('load', loadAll);
+
+/* expose small debug */
+window.__dv = { queue, API_KEYS };
+
+/* end */
+</script>
+</body>
+</html>
